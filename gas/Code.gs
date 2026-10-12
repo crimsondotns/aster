@@ -133,12 +133,21 @@ function fetchPositions() {
     // positionRisk returns every symbol; keep only open ones (positionAmt != 0).
     var rows = signedGet_('/fapi/v3/positionRisk', {}).filter(function (r) { return Number(r.positionAmt) !== 0; });
     var fetchedAt = new Date();
-    rows.forEach(function (r) { r.fetchedAt = fetchedAt; });
+    rows = rows.map(function (r) {
+      // One-way mode reports positionSide BOTH, so derive the side from the sign of positionAmt.
+      var side = r.positionSide === 'LONG' || r.positionSide === 'SHORT' ? r.positionSide
+        : Number(r.positionAmt) > 0 ? 'LONG' : 'SHORT';
+      var out = { symbol: r.symbol, side: side };  // put side right after symbol
+      Object.keys(r).forEach(function (k) { out[k] = r[k]; });
+      out.positionAmt = String(r.positionAmt).replace(/^[-+]/, '');  // direction is in `side`
+      out.fetchedAt = fetchedAt;
+      return out;
+    });
     var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Positions');
     if (sh) sh.clearContents();
     appendRows_('Positions', rows);
     log_(rows.length ? rows.length + ' open position(s): ' + rows.map(function (r) {
-      return r.symbol + ' ' + r.positionAmt + ' uPnL ' + Number(r.unRealizedProfit).toFixed(2);
+      return r.symbol + ' ' + r.side + ' ' + r.positionAmt + ' uPnL ' + Number(r.unRealizedProfit).toFixed(2);
     }).join(', ') : 'No open positions');
   } catch (e) {
     log_('ERROR: ' + e.message, 'ERROR');
